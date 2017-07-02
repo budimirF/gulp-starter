@@ -14,11 +14,12 @@ const pngquant = require('imagemin-pngquant'); // дополнение для pn
 const sourcemaps = require('gulp-sourcemaps'); //создание карты для отладки
 const cssmin = require('gulp-minify-css'); // сжатие стилей
 const rename = require("gulp-rename");
+const nodemon = require('gulp-nodemon');
 const gulpIf =  require('gulp-if');
 
 const isDevelopment = !process.env.NODE_ENV || process.env.NODE_ENV == 'development';
 
-const path = {  //прописываем пути
+const path = {            //прописываем пути
               build: {
                   html: 'public/',
                   js: 'public/js/',
@@ -45,35 +46,38 @@ const path = {  //прописываем пути
             };
 
 const config = {
-    server: {
-        baseDir: "./public"
+    bs : {
+      port: 3700,
+      proxy: "http://localhost:3000"
     },
-    host: 'localhost',
-    port: 3000
+    nodemon : {
+        script: 'server.js', //файл запуска сервера 
+        watch: ['server/**/*.*', 'server.js'] // файлы в которых необходимо отслеживать изменения
+    } 
 };
 
 gulp.task('html', function () {
     return gulp.src(path.src.html, {since: gulp.lastRun('html')}) //считывает файлы. Не файлы которые не менялись с последнего запуска 
-        .pipe(rigger())  //делает вставку из других файлов
+        .pipe(rigger()) //делает вставку из других файлов
         .pipe(gulp.dest(path.build.html)) //складывает обработаные файлы по указаному пути
 });
 
 gulp.task('styles', function() {
-    return combiner(
+    return combiner( 
         gulp.src(path.src.style),
         sass(),
         autoprefixer({  //добавляем вендорные префиксы
             cascade: true
         }),
         gulpIf(isDevelopment, sourcemaps.init()),  //создаем карту
-        cssmin(),				   //сжимаем стили
-        rename({				   //добавляем суфикс min
+        cssmin(),           //сжимаем стили
+        rename({            //добавляем суфикс min
             suffix: '.min'
         }),
         gulpIf(isDevelopment, sourcemaps.write()), //записываем карту
-        gulp.dest(path.build.css)
-    ).on('error', notify.onError());               //если есть ошибки выводим сообщение
-}); 
+        gulp.dest(path.build.css) 
+    ).on('error', notify.onError()); //если есть ошибки выводим сообщение
+});
 
 gulp.task('clean', function() {
   return del(path.publicDir);
@@ -105,24 +109,36 @@ gulp.task('fonts', function() {
 });
 
 gulp.task('build', gulp.series(  //запускаем поочередно очистку и одновременно компиляцию
-    'clean',
+    'clean', 
     gulp.parallel('html', 'styles', 'image', 'fonts', 'scripts'))
 );
 
-gulp.task('watch', function() {
+gulp.task('bs', function() { 
+  setTimeout(function () {
+    browserSync.init(config.bs);   //конфигурирование BrowserSync
+  }, 3000);                        
+});
+
+gulp.task('watch', function() {  //наблюдение за файлами и выполнение указанных задач при их изменениях
   gulp.watch(path.watch.html, gulp.series('html'));
   gulp.watch(path.watch.style, gulp.series('styles'));
   gulp.watch(path.watch.img, gulp.series('image'));
   gulp.watch(path.watch.fonts, gulp.series('fonts'));
   gulp.watch(path.watch.js, gulp.series('scripts'));
+  browserSync.watch('public/**/*.*').on('change', browserSync.reload);
 });
 
-gulp.task('bs', function() {
-  browserSync.init(config);
-
-  browserSync.watch(path.watch.bsWatch).on('change', browserSync.reload);
-});
+gulp.task('demon', function () {
+  nodemon(config.nodemon)        //конфигурирование
+  .on('restart', function () {
+    console.log('Server restarted!')
+  })
+  .on('crash', function () {
+     console.error('Application has crashed!\n');
+  })
+})
 
 gulp.task('default',
-    gulp.series('build', gulp.parallel('watch', 'bs'))
+    gulp.series('build', gulp.parallel('watch', 'demon', 'bs')) //запуск сборки и параллельный запуск задач 
 );
+
